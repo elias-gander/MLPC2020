@@ -4,7 +4,7 @@ from sklearn.preprocessing import StandardScaler
 import os
 import numpy as np
 
-from .utils import extract_number
+from utils import extract_number
 
 
 class Dataset:
@@ -42,7 +42,7 @@ class Dataset:
         self.data['label'] = self.data.apply(lambda row: calc_label(row), axis=1)
 
     def __get_train_test_files(self, base_dir, max_files):
-        files = os.listdir('data/train')
+        files = os.listdir(base_dir)
         files.sort()
 
         feature_files = [f for f in files if f.endswith('.npy')]
