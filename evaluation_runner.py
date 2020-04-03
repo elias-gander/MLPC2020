@@ -4,14 +4,24 @@ from sklearn.metrics import accuracy_score
 
 
 class EvaluationRunner:
-    def __init__(self, classifier):
-        self.classifier = classifier
+    def __init__(self, classifiers):
+        self.classifiers = classifiers
 
-    def cross_validate(self, folds, verbose=True):
+    def cross_validate(self, folds):
+        accuracies = { }
+
+        for name, classifier in self.classifiers.items():
+            print(f'Evaluating {name}')
+
+            accuracies[name] = self.__cross_validate(folds, classifier)
+
+        return accuracies
+
+    def __cross_validate(self, folds, classifier):
         accuracies = []
 
         for index, test in enumerate(folds):
-            classifier = copy.deepcopy(self.classifier)
+            model = copy.deepcopy(classifier)
 
             X = None
             y = None
@@ -27,13 +37,10 @@ class EvaluationRunner:
                     X = np.concatenate((X, fold['X']))
                     y = np.concatenate((y, fold['y']))
 
-            classifier.fit(X, y)
+            model.fit(X, y)
 
-            y_pred = classifier.predict(test['X'])
+            y_pred = model.predict(test['X'])
             accuracy = accuracy_score(test['y'], y_pred)
-
-            if verbose:
-                print(f'Fold {index + 1} accuracy: {accuracy:.6f}')
 
             accuracies.append(accuracy)
 
