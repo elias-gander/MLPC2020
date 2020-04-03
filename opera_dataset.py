@@ -7,7 +7,7 @@ import numpy as np
 from utils import extract_number
 
 
-class Dataset:
+class OperaDataset:
     def __init__(self, base_dir='data/train', max_files=None, remove_conflicting=True):
         self.metadata = pd.read_csv('data/train/metadata.txt')
 
@@ -19,15 +19,15 @@ class Dataset:
     def __initialize_data(self, base_dir, max_files, remove_conflicting):
         feature_files, label_files, max_files = self.__get_train_test_files(base_dir, max_files)
 
-        data, label_names = self.__extract_data(base_dir, feature_files, label_files, max_files, remove_conflicting)
+        data = self.__extract_data(base_dir, feature_files, label_files, max_files, remove_conflicting)
 
-        self.data = pd.DataFrame(data, columns=np.concatenate([self.feature_names, self.metadata.columns, label_names]))
+        self.data = pd.DataFrame(data, columns=np.concatenate([self.feature_names, self.metadata.columns, self.label_names]))
 
         # scale the data
         self.data[self.feature_names] = StandardScaler().fit_transform(self.data[self.feature_names])
 
         # convert labels to boolean
-        for l in label_names:
+        for l in self.label_names:
             self.data[l] = self.data[l].astype('bool')
 
         def calc_label(row):
@@ -54,7 +54,7 @@ class Dataset:
         return feature_files, label_files, max_files
 
     def __extract_data(self, base_dir, feature_files, label_files, max_files, remove_conflicting):
-        label_names = ['choral', 'female', 'male']
+        self.label_names = ['choral', 'female', 'male']
 
         data = None
 
@@ -68,11 +68,11 @@ class Dataset:
 
             combined = np.hstack((features, meta))
 
-            for l in label_names:
+            for l in self.label_names:
                 combined = np.hstack((combined, np.expand_dims(labels[l][:, 0], axis=1)))
 
             if remove_conflicting:
-                conflicting = self.__find_conflicting_indices(labels, label_names)
+                conflicting = self.__find_conflicting_indices(labels)
                 combined = np.delete(combined, conflicting, 0)
 
             if data is None:
@@ -80,12 +80,12 @@ class Dataset:
             else:
                 data = np.concatenate([data, combined])
 
-        return data, label_names
+        return data
 
-    def __find_conflicting_indices(self, labels, label_names):
+    def __find_conflicting_indices(self, labels):
         conflicting = []
 
-        for name in label_names:
+        for name in self.label_names:
             l = labels[name]
 
             if l.shape[1] > 1:
@@ -110,7 +110,7 @@ class Dataset:
 
     def generate_train_test_validation(self, target_columns, feature_columns=None):
         if feature_columns is None:
-            feature_columns = self.feature_names
+            feature_columns = self.feature_names[:]
 
         train_data = self.data[self.data.performance.isin(self.train_performances)]
         X_train = train_data[feature_columns]
@@ -128,7 +128,7 @@ class Dataset:
 
     def generate_folds(self, target_columns, feature_columns=None, k=5, seed=42):
         if feature_columns is None:
-            feature_columns = self.feature_names
+            feature_columns = self.feature_names[:]
 
         # TODO: smarter split. Some performances are longer than others
         unique_performances = np.concatenate([self.train_performances, self.validation_performances])
@@ -163,4 +163,23 @@ class Dataset:
         return self.data[self.feature_names]
 
     def labels(self, label='label'):
-        return self.data[[label]]
+        return self.columns([label])
+
+    def columns(self, columns):
+        if not isinstance(columns, list):
+            columns = [columns]
+
+        return self.data[columns]
+
+    def correlation_matrix(self, target=None):
+        columns = self.feature_names[:]
+
+        if target is not None:
+            columns += [target]
+
+        corr_matrix = self.data[columns].corr()
+
+        if target is None:
+            return corr_matrix
+        else:
+            return corr_matrix[target].sort_values(ascending=False)
