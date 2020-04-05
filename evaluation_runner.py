@@ -1,6 +1,7 @@
 import numpy as np
 import copy
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix, roc_curve, auc
+import pandas as pd
 
 
 class EvaluationRunner:
@@ -8,16 +9,16 @@ class EvaluationRunner:
         self.classifiers = classifiers
 
     def cross_validate(self, folds, scaler=None, projector=None):
-        accuracies = { }
+        rows = []
 
         folds = self.__concatenate_folds(folds, scaler, projector)
 
         for name, classifier in self.classifiers.items():
             print(f'Evaluating {name}')
 
-            accuracies[name] = self.__cross_validate(folds, classifier)
+            rows += self.__cross_validate(folds, classifier, name)
 
-        return accuracies
+        return pd.DataFrame(rows)
 
     def __concatenate_folds(self, folds, scaler, projector):
         concatenated = []
@@ -55,17 +56,40 @@ class EvaluationRunner:
 
         return concatenated
 
-    def __cross_validate(self, folds, classifier):
-        accuracies = []
+    def __cross_validate(self, folds, classifier, name):
+        rows = []
 
-        for fold in folds:
+        for i, fold in enumerate(folds):
             model = copy.deepcopy(classifier)
 
             model.fit(fold['X_train'], fold['y_train'])
 
-            pred = model.predict(fold['X_validation'])
-            accuracy = accuracy_score(fold['y_validation'], pred)
+            row = self.__evaluate(model, fold['X_validation'], fold['y_validation'])
+            row['name'] = name
+            row['fold'] = i
 
-            accuracies.append(accuracy)
+            rows.append(row)
 
-        return accuracies
+        return rows
+
+    def __evaluate(self, classifier, X, y):
+        y_pred = classifier.predict(X)
+
+        confusion = confusion_matrix(y, y_pred, labels=[0, 1])
+        tp = confusion[0, 0]
+        fn = confusion[0, 1]
+        fp = confusion[1, 0]
+        tn = confusion[1, 1]
+
+        accuracy = (tp + tn) / float(tp + tn + fp + fn)
+
+        fnr = fn / float(fn + tp)
+        fpr = fp / float(fp + tn)
+
+        probs = classifier.predict_proba(X)
+        y_pred = probs[:, 1]
+
+        fprs, tprs, _ = roc_curve(y, y_pred)
+        auc_score = auc(fprs, tprs)
+
+        return { 'accuracy': accuracy, 'fpr': fpr, 'fnr': fnr, 'auc_score': auc_score, 'fprs': fprs, 'tprs': tprs }
