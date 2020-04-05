@@ -1,6 +1,5 @@
 import pandas as pd
 import itertools
-from sklearn.preprocessing import StandardScaler
 import os
 import numpy as np
 
@@ -22,9 +21,6 @@ class OperaDataset:
         data = self.__extract_data(base_dir, feature_files, label_files, max_files, remove_conflicting)
 
         self.data = pd.DataFrame(data, columns=np.concatenate([self.feature_names, self.metadata.columns, self.label_names]))
-
-        # scale the data
-        self.data[self.feature_names] = StandardScaler().fit_transform(self.data[self.feature_names])
 
         # convert labels to boolean
         for l in self.label_names:
@@ -131,6 +127,7 @@ class OperaDataset:
             feature_columns = self.feature_names[:]
 
         # TODO: smarter split. Some performances are longer than others
+        # TODO: handle class imbalances (either downsampling or upsampling)
         unique_performances = np.concatenate([self.train_performances, self.validation_performances])
         num_performances = len(unique_performances)
 
