@@ -20,7 +20,8 @@ class OperaDataset:
 
         data = self.__extract_data(base_dir, feature_files, label_files, max_files, remove_conflicting)
 
-        self.data = pd.DataFrame(data, columns=np.concatenate([self.feature_names, self.metadata.columns, self.label_names]))
+        self.data = pd.DataFrame(data,
+                                 columns=np.concatenate([self.feature_names, self.metadata.columns, self.label_names]))
 
         # convert labels to boolean
         for l in self.label_names:
@@ -104,34 +105,35 @@ class OperaDataset:
         self.validation_performances = unique_performances[train_end_index:validation_end_index]
         self.test_performances = unique_performances[validation_end_index:]
 
-    def generate_train_test_validation(self, target_columns, feature_columns=None):
+    def generate_train_test_validation(self, label, feature_columns=None, sampling=None):
         if feature_columns is None:
             feature_columns = self.feature_names[:]
 
-        train_data = self.data[self.data.performance.isin(self.train_performances)]
+        train_data = self.data_for_performances(self.train_performances, label, sampling)
         X_train = train_data[feature_columns]
-        y_train = train_data[target_columns]
+        y_train = train_data[label]
 
-        validation_data = self.data[self.data.performance.isin(self.validation_performances)]
+        validation_data = self.data_for_performances(self.validation_performances, label, sampling)
         X_validation = validation_data[feature_columns]
-        y_validation = validation_data[target_columns]
+        y_validation = validation_data[label]
 
-        test_data = self.data[self.data.performance.isin(self.test_performances)]
+        test_data = self.data_for_performances(self.test_performances, label, sampling)
         X_test = test_data[feature_columns]
-        y_test = test_data[target_columns]
+        y_test = test_data[label]
 
         return X_train, y_train, X_validation, y_validation, X_test, y_test
 
-    def generate_folds(self, target_columns, feature_columns=None, k=5, seed=42):
+    def generate_folds(self, label, feature_columns=None, k=5, seed=42, sampling=None):
         if feature_columns is None:
             feature_columns = self.feature_names[:]
 
         # TODO: smarter split. Some performances are longer than others
-        # TODO: handle class imbalances (either downsampling or upsampling)
         unique_performances = np.concatenate([self.train_performances, self.validation_performances])
         num_performances = len(unique_performances)
 
         print(f'Generating {k} folds out of data from {num_performances} performances.')
+
+        data = self.data_for_performances(unique_performances, label, sampling)
 
         np.random.seed(seed)
         np.random.shuffle(unique_performances)
@@ -146,15 +148,34 @@ class OperaDataset:
 
             performances = np.take(unique_performances, range(prev_start_index, end_index))
 
-            data = self.data[self.data.performance.isin(performances)]
-            X = data[feature_columns]
-            y = data[target_columns]
+            d = data[data.performance.isin(performances)]
+            X = d[feature_columns]
+            y = d[label]
 
             folds[i] = ({ 'X': X, 'y': y })
 
             prev_start_index = end_index
 
         return folds
+
+    def data_for_performances(self, performances, label, sampling=None):
+        data = self.data[self.data.performance.isin(performances)]
+
+        if sampling is None:
+            return data
+
+        counts = data[label].value_counts().to_numpy()
+        classes = [data[data[label] == False], data[data[label] == True]]
+
+        min_class = counts.argmin()
+        max_class = counts.argmax()
+
+        if sampling == 'down':
+            classes[max_class] = classes[max_class].sample(counts[min_class])
+        elif sampling == 'up':
+            classes[min_class] = classes[min_class].sample(counts[max_class], replace=True)
+
+        return pd.concat(classes)
 
     def features(self):
         return self.data[self.feature_names]
