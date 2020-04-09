@@ -131,32 +131,27 @@ class OperaDataset:
         unique_performances = np.concatenate([self.train_performances, self.validation_performances])
         num_performances = len(unique_performances)
 
-        print(f'Generating {k} folds out of data from {num_performances} performances.')
-
         data = self.data_for_performances(unique_performances, label, sampling)
 
         np.random.seed(seed)
         np.random.shuffle(unique_performances)
 
-        folds = [{ 'X': [], 'y': [] } for i in range(k)]
-
         prev_start_index = 0
         step = np.math.ceil(num_performances / k)
+        cv_indices = []
+
         for i, end_index in enumerate(np.arange(start=step, stop=num_performances + step, step=step)):
             if end_index > num_performances:
                 end_index = num_performances
 
             performances = np.take(unique_performances, range(prev_start_index, end_index))
 
-            d = data[data.performance.isin(performances)]
-            X = d[feature_columns]
-            y = d[label]
-
-            folds[i] = ({ 'X': X, 'y': y })
+            cv_indices.append((data[~data.performance.isin(performances)].index.values.astype(int),
+                               data[data.performance.isin(performances)].index.values.astype(int)))
 
             prev_start_index = end_index
 
-        return folds
+        return data[feature_columns], data[label], cv_indices
 
     def data_for_performances(self, performances, label, sampling=None):
         data = self.data[self.data.performance.isin(performances)]
@@ -175,7 +170,12 @@ class OperaDataset:
         elif sampling == 'up':
             classes[min_class] = classes[min_class].sample(counts[max_class], replace=True)
 
-        return pd.concat(classes)
+        data = pd.concat(classes)
+
+        # create continuous index
+        data.index = np.arange(len(data))
+
+        return data
 
     def features(self):
         return self.data[self.feature_names]

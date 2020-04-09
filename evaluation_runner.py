@@ -1,4 +1,3 @@
-import numpy as np
 import copy
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 import pandas as pd
@@ -8,63 +7,38 @@ class EvaluationRunner:
     def __init__(self, classifiers):
         self.classifiers = classifiers
 
-    def cross_validate(self, folds, scaler=None, projector=None):
+    def cross_validate(self, X, y, cv, scaler=None, projector=None):
         rows = []
-
-        folds = self.__concatenate_folds(folds, scaler, projector)
 
         for name, classifier in self.classifiers.items():
             print(f'Evaluating {name}')
 
-            rows += self.__cross_validate(folds, classifier, name)
+            rows += self.__cross_validate(X, y, cv, scaler, projector, classifier, name)
 
         return pd.DataFrame(rows)
 
-    def __concatenate_folds(self, folds, scaler, projector):
-        concatenated = []
-
-        for index, validation in enumerate(folds):
-            X_train = None
-            y_train = None
-
-            X_validation = validation['X']
-            y_validation = validation['y']
-
-            for i, fold in enumerate(folds):
-                if i == index:
-                    continue
-
-                if X_train is None:
-                    X_train = fold['X']
-                    y_train = fold['y']
-                else:
-                    X_train = np.concatenate((X_train, fold['X']))
-                    y_train = np.concatenate((y_train, fold['y']))
-
-            if scaler is not None:
-                s = copy.deepcopy(scaler)
-                X_train = s.fit_transform(X_train)
-                X_validation = s.transform(X_validation)
-
-            if projector is not None:
-                p = copy.deepcopy(projector)
-                X_train = p.fit_transform(X_train)
-                X_validation = p.transform(X_validation)
-
-            concatenated.append(
-                { 'X_train': X_train, 'y_train': y_train, 'X_validation': X_validation, 'y_validation': y_validation })
-
-        return concatenated
-
-    def __cross_validate(self, folds, classifier, name):
+    def __cross_validate(self, X, y, cv, scaler, projector, classifier, name):
         rows = []
 
-        for i, fold in enumerate(folds):
+        for i, (train_indices, test_indices) in enumerate(cv):
             model = copy.deepcopy(classifier)
 
-            model.fit(fold['X_train'], fold['y_train'])
+            X_train = X[train_indices, :]
+            X_test = X[test_indices, :]
+            y_train = y[train_indices]
+            y_test = y[test_indices]
 
-            row = self.__evaluate(model, fold['X_validation'], fold['y_validation'])
+            if scaler is not None:
+                X_train = scaler.fit_transform(X_train)
+                X_test = scaler.transform(X_test)
+
+            if projector is not None:
+                X_train = projector.fit_transform(X_train)
+                X_test = projector.transform(X_test)
+
+            model.fit(X_train, y_train)
+
+            row = self.__evaluate(model, X_test, y_test)
             row['name'] = name
             row['fold'] = i
 
